@@ -1,0 +1,239 @@
+---
+title: "101C Midterm Kaggle Competition"
+author: "Team Limit DNE: Yingzhen Zhao, Yanhua Lin, Hana Yerin Lim"
+date: "11/7/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Data libraries & Loading data 
+```{r echo=FALSE, message=FALSE}
+library(readr)
+library(class)
+library(caret)
+train <- read.csv('training.csv')
+test <- read.csv('test.csv')
+```
+
+# Data Cleaning on training data set 
+## i) Removing highly correlated predictors 
+```{r}
+train_scale <- as.data.frame(scale(train[ , -c(1, 99)]))
+train_scale <- train_scale[ , 97 : 1]
+
+# remove predictors highly correlated 
+save_features <- character()
+while(ncol(train_scale) > 2) {
+  
+  correlation <- cor(train_scale[ , 1], train_scale[ , 2 : ncol(train_scale)])
+  high_correlated <- names(which(correlation[1, ] > 0.7))
+  left_features <- colnames(train_scale)[!(colnames(train_scale) %in% high_correlated)]
+  left_features <- left_features[-1]
+  save_features <- c(save_features, names(train_scale[1]))
+  train_scale <- train_scale[ ,left_features]
+  
+}
+
+train_left <- as.data.frame(scale(train[ ,save_features]))
+```
+
+## ii) Changing values of outliers on the training data set 
+```{r echo=FALSE, message=FALSE}
+change_outlier <- function(x){
+  lowerq <- quantile(x)[2]
+  upperq <- quantile(x)[4]
+  iqr = upperq - lowerq
+  upper_outlier <- (iqr * 2) + upperq
+  lower_outlier <- lowerq - (iqr * 2)
+  x[x > upper_outlier] <- upper_outlier
+  x[x < lower_outlier] <- lower_outlier
+  x
+}
+
+# change values of outliers of training data set
+train_wo_correlated <- train[ ,save_features]
+store <- cbind()
+for(i in colnames(train_wo_correlated)){
+  store <- cbind(store, change_outlier(train_wo_correlated[[i]]))
+}
+
+colnames(store) <- colnames(train_wo_correlated)
+store <- as.data.frame(store)
+store$class <- train$class
+```
+
+# Predictors selection using boxplot 
+```{r}
+# plot the predictors by group; Example plot
+par(mfrow = c(2,3))
+for (i in colnames(store)[1:6]) {
+  boxplot(store[ ,i] ~ store$class)
+}
+```
+
+```{r, eval = FALSE}
+# plot the predictors by group
+par(mfrow = c(2,3))
+for (i in colnames(store)[1:6]) {
+  boxplot(store[ ,i] ~ store$class)
+}
+par(mfrow = c(2,3))
+for (i in colnames(store)[7:12]) {
+  boxplot(store[ ,i] ~ store$class)
+}
+par(mfrow = c(2,3))
+for (i in colnames(store)[13:18]) {
+  boxplot(store[ ,i] ~ store$class)
+}
+par(mfrow = c(2,3))
+for (i in colnames(store)[19:24]) {
+  boxplot(store[ ,i] ~ store$class)
+}
+par(mfrow = c(2,3))
+for (i in colnames(store)[25:30]) {
+  boxplot(store[ ,i] ~ store$class)
+}
+par(mfrow = c(2,3))
+for (i in colnames(store)[31:36]) {
+  boxplot(store[ ,i] ~ store$class)
+}
+par(mfrow = c(2,3))
+for (i in colnames(store)[37:42]) {
+  boxplot(store[ ,i] ~ store$class)
+}
+par(mfrow = c(2,3))
+for (i in colnames(store)[43:48]) {
+  boxplot(store[ ,i] ~ store$class)
+}
+par(mfrow = c(2,3))
+for (i in colnames(store)[49:54]) {
+  boxplot(store[ ,i] ~ store$class)
+}
+par(mfrow = c(2,3))
+for (i in colnames(store)[55:58]) {
+  boxplot(store[ ,i] ~ store$class)
+}
+```
+
+# Dimension reduction 
+```{r}
+# predictors picked from the plot
+features <- colnames(train_left)[c(1,2,15,17,19,20,21,23,25,27,30,31,32,33,38,42,46,49,52,56,57,58)] 
+final_train <- store[features]
+final_train$class <- train$class
+
+final_train$class_3[which(final_train$class == 0)] <- "NG"
+final_train$class_3[which(final_train$class == 1)] <- "OG"
+final_train$class_3[which(final_train$class == 2)] <- "TSG"
+final_train$class_3 <- as.factor(final_train$class_3)
+final_train <- final_train[ ,-23]
+```
+
+# Classification metrics 
+```{r}
+# predicting class using different methods
+set.seed(1000)
+trainIndex <- createDataPartition(final_train$class_3, p = 0.7, list = FALSE)
+train1 <- final_train[trainIndex, ]
+validation <- final_train[-trainIndex, ]
+
+
+train_control <- trainControl(method="cv", number = 10, 
+                              classProbs = TRUE, 
+                              savePredictions = TRUE)
+
+LDAfit <- train(class_3 ~ ., 
+                data = train1, 
+                method = "lda",
+                preProc = c("center", "scale"),
+                trControl = train_control)
+
+KNNfit <- train(class_3 ~ .,
+                data = train1,
+                method = 'knn',
+                 preProc = c("center", "scale"),
+                 trControl = train_control,
+                 tuneGrid = expand.grid(k = seq(1, 50, by = 5)))
+
+Multinomfit <- train(class_3 ~ .,
+                 data = train1,
+                 method = "multinom",
+                 preProc = c("center", "scale"),
+                 trControl = train_control,
+                 trace = FALSE)
+
+QDAfit <- train(class_3 ~ .,
+                 data = train1,
+                 method = "qda",
+                 preProc = c("center", "scale"),
+                 trControl = train_control)
+```
+
+# Prediction of the metrics 
+```{r}
+# test the valitdation set
+predLDA <- predict(LDAfit, newdata = validation)
+confusionMatrix(validation$class_3, predLDA)
+
+predKNN <- predict(KNNfit, newdata = validation)
+confusionMatrix(validation$class_3, predKNN)
+
+predMultinom <- predict(Multinomfit, newdata = validation)
+confusionMatrix(validation$class_3, predMultinom)
+
+predQDA <- predict(QDAfit, newdata = validation)
+confusionMatrix(validation$class_3, predQDA)
+```
+
+# Best metric with the highest predictive accuracy 
+```{r}
+# pick the model based on the result above
+LDAfit <- train(class_3 ~ ., 
+                data = final_train, 
+                method = "lda",
+                preProc = c("center", "scale"),
+                trControl = train_control)
+```
+
+# Data cleaning on test data set 
+```{r}
+# change outliers of test data
+final_test <- test[features]
+
+change_outlier <- function(x){
+  lowerq <- quantile(x)[2]
+  upperq <- quantile(x)[4]
+  iqr = upperq - lowerq
+  upper_outlier <- (iqr * 4) + upperq
+  lower_outlier <- lowerq - (iqr * 4)
+  x[x > upper_outlier] <- upper_outlier
+  x[x < lower_outlier] <- lower_outlier
+  x
+}
+
+store2 <- cbind()
+for(i in colnames(final_test)){
+  store2 <- cbind(store2, change_outlier(final_test[[i]]))
+}
+
+colnames(store2) <- c(colnames(final_test))
+store2 <- as.data.frame(store2)
+```
+
+# Final prediction
+```{r}
+# prediction using test data
+predLDA <- predict(LDAfit, newdata = store2)
+table(predLDA)
+
+result <- data.frame(test$id,predLDA)
+colnames(result) <- c("id", "class")
+result$class <- as.factor(result$class)
+levels(result$class) <- c(0,1,2)
+
+#write.csv(result, "result.csv", row.names = FALSE)
+```
+
