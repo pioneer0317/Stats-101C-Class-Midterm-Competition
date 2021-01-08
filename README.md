@@ -21,4 +21,4 @@ main codes are in the rmd file.
 report is also included in the pdf file. 
 
 ## Results 
-Our team placed 4th place with the WCA of 0.83380. 
+Our team won 4th place with the WCA of 0.83380. 
